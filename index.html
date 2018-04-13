@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <link rel="shortcut icon" href="data:image/x-icon;," type="image/x-icon"> 
     <title>Feed to One Offs Test</title>
 </head>
 <body>
@@ -20,13 +21,25 @@ BEFORE RUNNING:
   https://developers.google.com/sheets/api/quickstart/js#step_2_set_up_the_sample
 -->
 <script>
-  function makeApiCall() {
+  var all = {};
+
+  var parentParameters = [];
+  var messagesParameters = [];
+  var ctasParameters = [];
+  var endemicImagesParameters = [];
+
+  var parentPrecombination = [];
+  var messagesPrecombination = [];
+  var ctasPrecombination = [];
+  var endemicPrecombination = [];
+
+  function makeApiCall(spreadsheetId, sheet, range) {
     var params = {
       // The ID of the spreadsheet to retrieve data from.
-      spreadsheetId: '1Z6fgUiz2zeTmte01i5ZwroQNCkpjysIP5gkeTFlb_CM',  // TODO: Update placeholder value.
+      spreadsheetId: spreadsheetId,  // TODO: Update placeholder value.
 
       // The A1 notation of the values to retrieve.
-      range: 'A1:O10',  // TODO: Update placeholder value.
+      range: sheet + range,  // TODO: Update placeholder value.
 
       // How values should be represented in the output.
       // The default render option is ValueRenderOption.FORMATTED_VALUE.
@@ -42,7 +55,10 @@ BEFORE RUNNING:
     var request = gapi.client.sheets.spreadsheets.values.get(params);
     request.then(function(response) {
       // TODO: Change code below to process the `response` object:
-      console.log(response.result);
+      console.log(response.result.values);
+      
+      all[sheet] = response.result.values;
+
     }, function(reason) {
       console.error('error: ' + reason.result.error.message);
     });
@@ -78,7 +94,8 @@ BEFORE RUNNING:
 
   function updateSignInStatus(isSignedIn) {
     if (isSignedIn) {
-      makeApiCall();
+      console.log('Signed in');
+      sheetApiCall();
     }
   }
 
@@ -89,6 +106,178 @@ BEFORE RUNNING:
   function handleSignOutClick(event) {
     gapi.auth2.getAuthInstance().signOut();
   }
+
+/* Function to build units */
+function sheetApiCall(){
+  makeApiCall('1Z6fgUiz2zeTmte01i5ZwroQNCkpjysIP5gkeTFlb_CM', 'parent', '!A1:O3');
+  makeApiCall('1Z6fgUiz2zeTmte01i5ZwroQNCkpjysIP5gkeTFlb_CM', 'messages', '!A1:O3');
+  makeApiCall('1Z6fgUiz2zeTmte01i5ZwroQNCkpjysIP5gkeTFlb_CM', 'ctas', '!A1:O3');
+  makeApiCall('1Z6fgUiz2zeTmte01i5ZwroQNCkpjysIP5gkeTFlb_CM', 'endemic_images', '!A1:O3');
+};
+
+/* Function check matching parents */
+function getParameters(){
+
+  loopSheets(all.parent, parentParameters);
+  loopSheets(all.messages, messagesParameters);
+  loopSheets(all.ctas, ctasParameters);
+  loopSheets(all.endemic_images, endemicImagesParameters);
+
+  buildPrecombinations(parentParameters, parentPrecombination)
+};
+
+function buildPrecombinations(sheetParameters, objectPrecombination){
+  /* precombinations of Parent */
+  
+  sheetParameters.forEach(sheet => {
+    function tempObject(id, ad_size, nameplate, type_of_creative){
+      this.id = id;
+      this.ad_size = ad_size;
+      this.nameplate = nameplate;
+      this.type_of_creative = type_of_creative;
+    };
+    
+    sheet.ad_size.forEach(size => {
+
+      sheet.type_of_creative.forEach(toc => {
+        
+        var newTempObject = new tempObject(sheet.id, size, sheet.nameplate, toc);
+        parentPrecombination.push(newTempObject);
+        console.log(newTempObject);
+             
+      });
+
+    });
+  });
+
+  
+};
+
+function loopSheets(array, objectOutput){
+  let indexOfId = array[0].indexOf('id');
+  let indexOfAdSize = array[0].indexOf('ad_size');
+  let indexOfTypeOfCreative = array[0].indexOf('type_of_creative');
+  let indexOfNameplate = array[0].indexOf('nameplate');
+  
+  array.forEach((row, index) => {
+    if(index > 0){
+      // Get Ad Size of all rows from parent
+      let rowId = row[indexOfId];
+      let adSize = row[indexOfAdSize].split(',');
+      let TypeOfCreative = row[indexOfTypeOfCreative].split(',');
+      let namePlate = row[indexOfNameplate];
+      //console.log(rowId + ' - ad_size: ' + adSize + ' - type_of_creative: ' + TypeOfCreative + ' - nameplate: ' + namePlate);
+      //console.log(adSize);
+
+
+      var tempObject = {};
+
+      tempObject['id'] = rowId;
+      tempObject['ad_size'] = adSize;
+      tempObject['type_of_creative'] = TypeOfCreative;  
+      tempObject['nameplate'] = namePlate;
+
+      objectOutput.push(tempObject);
+      
+    }
+  });
+};
+
+function compareSheets(){
+  parentPrecombination.forEach((parPrecom, index) => {
+
+    messagesParameters.forEach((messPar) => {
+      ctasParameters.forEach((ctaPar) => {
+        endemicImagesParameters.forEach((endImg) => {
+
+          var nppm, nppc, nppe, npmc, npme, npce;
+
+          /* Compare Nameplates */
+          nppm = parPrecom.nameplate == messPar.nameplate; //Parent nameplate = Message nameplate?
+          nppc = parPrecom.nameplate == ctaPar.nameplate; //Parent nameplate = Cta nameplate?
+          nppe = parPrecom.nameplate == endImg.nameplate; //Parent nameplate = Endemic image nameplate?
+          npmc = messPar.nameplate == ctaPar.nameplate; //Message nameplate = Cta nameplate?
+          npme = messPar.nameplate == endImg.nameplate; //Message nameplate = Endemic image nameplate?
+          npce = ctaPar.nameplate == endImg.nameplate; //Cta nameplate = Endemic image nameplate?
+
+          /* Compare Ad size */
+
+          var adpm, adpc, adpe, admc, adme, adce;
+
+          messPar.ad_size.some(function(mp, index){
+            if(parPrecom.ad_size == mp){ adpm = true; return true}else{ adpm = false; };//Parent Ad size = one of the Message Ad sizes?
+          });
+          ctaPar.ad_size.some(function(cp, index){
+            if(parPrecom.ad_size == cp){ adpc = true; return true}else{ adpc = false; };//Parent Ad size = one of the Cta Ad sizes?
+          });
+          endImg.ad_size.some(function(ep, index){
+            if(parPrecom.ad_size == ep){ adpe = true; return true}else{ adpe = false; };//Parent Ad size = one of the Endemic image Ad sizes?
+          });
+          messPar.ad_size.forEach(mad => {
+            ctaPar.ad_size.some(function(cad, index){
+              if(mad == cad){ admc = true; return true}else{ admc = false; };//one of the Message Ad sizes = one of the cta ad sizes?
+            });
+          });
+          messPar.ad_size.forEach(mad => {
+            endImg.ad_size.some(function(ead, index){
+                if(mad == ead){ adme = true; return true}else{ adme = false; };//one of the Message Ad sizes = one of the endemic image ad sizes?
+            }); 
+          });
+          ctaPar.ad_size.forEach(cad => {
+            endImg.ad_size.some(function(ead, index){
+              if(cad == ead){ adce = true; return true}else{ adce = false; };//one of the cta Ad sizes = one of the endemic image ad sizes?
+            });
+          });
+
+          /* Compare Type of Creative */
+          var tocpm, tocpc, tocpe, tocmc, tocme, tocce;
+
+          messPar.type_of_creative.some(function(mp, index){
+            if(parPrecom.type_of_creative == mp){ tocpm = true; return true}else{ tocpm = false; };//Parent toc size = one of the Message toc sizes?
+          });
+          ctaPar.type_of_creative.some(function(cp, index){
+            if(parPrecom.type_of_creative == cp){ tocpc = true; return true}else{ tocpc = false; };//Parent toc size = one of the Cta toc sizes?
+          });
+          endImg.type_of_creative.some(function(ep, index){
+            if(parPrecom.type_of_creative == ep){ tocpe = true; return true}else{ tocpe = false; };//Parent toc size = one of the Endemic image toc sizes?
+          });
+          messPar.type_of_creative.forEach(mtoc => {
+            ctaPar.type_of_creative.some(function(ctoc, index){
+              if(mtoc == ctoc){ tocmc = true; return true}else{ tocmc = false; };//one of the Message toc sizes = one of the cta toc sizes?
+            });
+          });
+          messPar.type_of_creative.forEach(mtoc => {
+            endImg.type_of_creative.some(function(etoc, index){
+                if(mtoc == etoc){ tocme = true; return true}else{ tocme = false; };//one of the Message toc sizes = one of the endemic image toc sizes?
+            }); 
+          });
+          ctaPar.type_of_creative.forEach(ctoc => {
+            endImg.type_of_creative.some(function(etoc, index){
+              if(ctoc == etoc){ tocce = true; return true}else{ tocce = false; };//one of the cta toc sizes = one of the endemic image toc sizes?
+            });
+          });
+
+          //console.log(nppm, nppc, nppe, npmc, npme, npce);
+          // console.log(adpm, adpc, adpe, admc, adme, adce);
+          // console.log(tocpm, tocpc, tocpe, tocmc, tocme, tocce);
+
+          if(adpm || adpc || adpe || admc || adme || adce || nppm || nppc || nppe || npmc || npme || npce || tocpm || tocpc || tocpe || tocmc || tocme || tocce){
+            //console.log(parPrecom.nameplate);
+            console.log(index + ' - ' + parPrecom.id + ' - Combination found! ' + parPrecom.ad_size + ' - ' + parPrecom.type_of_creative + ' - ' + parPrecom.nameplate);
+          };
+
+        });
+      });
+    });
+    
+    if(true){
+     // console.log(i + ' - ' + parPrecom.id + ' - Combination found! ' + parPrecom.ad_size + ' - ' + parPrecom.type_of_creative + ' - ' + parentPrecombination[i].nameplate);
+    }
+
+  });
+};
+
+
 </script>
 <script async defer src="https://apis.google.com/js/api.js"
   onload="this.onload=function(){};handleClientLoad()"
